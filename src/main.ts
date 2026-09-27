@@ -1,7 +1,10 @@
 import { GameInstance } from './core/GameInstance';
+import { initAnalytics } from './core/analytics';
 
 const gameRoot = document.getElementById('game-root')!;
 const uiRoot = document.getElementById('ui-root')!;
+
+initAnalytics();
 
 new GameInstance(gameRoot, uiRoot).boot().catch((err: unknown) => {
   console.error(err);
