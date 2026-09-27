@@ -16,6 +16,7 @@ import { LockReticle } from './hud/LockReticle';
 import { Minimap } from './hud/Minimap';
 import { ObjectivePanel } from './hud/ObjectivePanel';
 import { StatusPanel } from './hud/StatusPanel';
+import { TouchControls } from './hud/TouchControls';
 import { DialogueBox } from './modal/DialogueBox';
 import { PauseMenu, type PauseTab } from './modal/PauseMenu';
 import { QTEPrompt } from './modal/QTEPrompt';
@@ -39,6 +40,7 @@ import { TitleScreen } from './screens/TitleScreen';
 interface Parts {
   readonly hud: HTMLElement;
   readonly lockHint: HTMLElement;
+  readonly touch: TouchControls;
   readonly status: StatusPanel;
   readonly objective: ObjectivePanel;
   readonly minimap: Minimap;
@@ -123,6 +125,8 @@ export class UIManager implements IUIManager, GameSystem, Host {
     toggle(p.hud, 'is-on', this.hudOn);
     // Esc-closing a menu can't re-grab the mouse (Esc is no user gesture): say a click will.
     toggle(p.lockHint, 'is-on', !input.pointerLocked);
+    toggle(this.root, 'is-touch', input.touch);
+    p.touch.update(this.hudOn, state.is('combat'));
     p.boss.suppress(!this.hudOn);
     if (this.hudOn) {
       p.status.update();
@@ -243,11 +247,13 @@ export class UIManager implements IUIManager, GameSystem, Host {
   private build(): Parts {
     const { root, clock, ctx } = this;
     const hud = el('div', 'yk-hud', root);
+    const touch = new TouchControls(hud, ctx.input);
     const anchored = el('div', 'yk-anchored', hud);
     const controls = new ControlsOverlay(this, root);
     return {
       hud,
       lockHint: el('div', 'yk-lockhint', hud, '點擊畫面以控制鏡頭'),
+      touch,
       enemies: new EnemyBars(anchored, this),
       prompt: new InteractPrompt(anchored, this),
       reticle: new LockReticle(anchored, this),

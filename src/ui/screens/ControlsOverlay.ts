@@ -9,23 +9,28 @@ interface Row {
   zh: string;
   en: string;
   keys: (label: Label) => string[];
+  /** Touch-mode keys when they differ from keys(label); null = no touch control. */
+  touch?: ((label: Label) => string[]) | null;
 }
 
 const ROWS: readonly Row[] = [
-  { zh: '移動', en: 'Move', keys: (l) => [l('moveForward'), l('moveLeft'), l('moveBack'), l('moveRight')] },
-  { zh: '視角', en: 'Camera', keys: () => ['MOUSE'] },
-  { zh: '衝刺', en: 'Sprint', keys: (l) => [l('sprint')] },
-  { zh: '輕攻擊', en: 'Light attack', keys: (l) => [l('lightAttack'), 'LMB'] },
-  { zh: '重攻擊', en: 'Heavy attack', keys: (l) => [l('heavyAttack'), 'RMB'] },
+  {
+    zh: '移動', en: 'Move', touch: () => ['左邊拖動'],
+    keys: (l) => [l('moveForward'), l('moveLeft'), l('moveBack'), l('moveRight')],
+  },
+  { zh: '視角', en: 'Camera', keys: () => ['MOUSE'], touch: () => ['右邊拖動'] },
+  { zh: '衝刺', en: 'Sprint', keys: (l) => [l('sprint')], touch: () => ['搖桿推盡'] },
+  { zh: '輕攻擊', en: 'Light attack', keys: (l) => [l('lightAttack'), 'LMB'], touch: (l) => [l('lightAttack')] },
+  { zh: '重攻擊', en: 'Heavy attack', keys: (l) => [l('heavyAttack'), 'RMB'], touch: (l) => [l('heavyAttack')] },
   { zh: '防禦', en: 'Guard (hold)', keys: (l) => [l('guard')] },
   { zh: '閃避', en: 'Dodge', keys: (l) => [l('dodge')] },
   { zh: '互動', en: 'Interact / talk', keys: (l) => [l('interact')] },
   { zh: '抓人', en: 'Grab', keys: (l) => [l('grab')] },
   { zh: '極技', en: 'Heat action', keys: (l) => [l('heatAction')] },
   { zh: '鎖定', en: 'Lock on', keys: (l) => [l('lockOn')] },
-  { zh: '轉換目標', en: 'Switch target', keys: (l) => [l('cycleTarget')] },
+  { zh: '轉換目標', en: 'Switch target', keys: (l) => [l('cycleTarget')], touch: null },
   { zh: '暫停', en: 'Pause', keys: (l) => [l('pause')] },
-  { zh: '物品', en: 'Items', keys: (l) => [l('inventory')] },
+  { zh: '物品', en: 'Items', keys: (l) => [l('inventory')], touch: null },
 ];
 
 const CLOSE_ACTIONS: readonly InputAction[] = ['cancel', 'confirm', 'pause', 'inventory'];
@@ -59,13 +64,16 @@ export class ControlsOverlay implements Modal {
     el('span', 'yk-controls-title', head, '操作說明');
     el('span', 'yk-controls-title-en', head, 'CONTROLS');
     const grid = el('div', 'yk-controls-grid', card);
-    const label: Label = (a) => this.host.ctx.input.getLabel(a);
+    const { input } = this.host.ctx;
+    const label: Label = (a) => input.getLabel(a);
     for (const row of ROWS) {
+      const touch = input.touch ? row.touch : undefined;
+      if (touch === null) continue;
       const line = el('div', 'yk-controls-row', grid);
       const names = el('span', 'yk-controls-name', line, row.zh);
       el('small', '', names, row.en);
       const keys = el('span', 'yk-controls-keys', line);
-      for (const k of row.keys(label)) el('kbd', 'yk-key', keys, k);
+      for (const k of (touch ?? row.keys)(label)) el('kbd', 'yk-key', keys, k);
     }
     el('div', 'yk-controls-tip', card,
       `打中人會儲 HEAT。HEAT 夠嘅時候靠近敵人撳 [${label('heatAction')}] 發動極技。`);

@@ -203,6 +203,7 @@ export interface IEngine {
  *  pause Escape     inventory I              confirm Enter/Space/E
  *  cancel Escape/Backspace   menuUp W/↑  menuDown S/↓  menuLeft A/←  menuRight D/→
  *  choice1..4 Digit1..4      debug F3
+ * Every action also has a touch source, driven by the on-screen controls.
  */
 export type InputAction =
   | 'moveForward' | 'moveBack' | 'moveLeft' | 'moveRight'
@@ -227,10 +228,19 @@ export interface IInputManager {
   consumeBuffered(action: InputAction, withinSec: number): boolean;
   /** x = right, y = forward, length ≤ 1. Zero when input is blocked. */
   getMoveVector(): { x: number; y: number };
-  /** Mouse delta in pixels since last frame (only while pointer-locked). */
+  /** Mouse or touch-drag delta in pixels since last frame (only while pointerLocked). */
   getLookDelta(): { x: number; y: number };
-  /** Human label for the primary binding, e.g. 'J', 'SPACE', 'LMB'. */
+  /** Human label for the primary binding, e.g. 'J', 'SPACE', 'LMB' (the button face in touch mode). */
   getLabel(action: InputAction): string;
+  /** The last pointer was a finger: on-screen controls are in charge. */
+  readonly touch: boolean;
+  /** On-screen button held/released. Mixes with keys like any other source. */
+  setTouchButton(action: InputAction, down: boolean): void;
+  /** On-screen stick, x = right, y = forward, length ≤ 1. (0, 0) = let go. */
+  setTouchStick(x: number, y: number): void;
+  /** On-screen camera drag, in pixels. */
+  addTouchLook(dx: number, dy: number): void;
+  /** Look input is live: the mouse is captured, or touch mode (which needs no capture). */
   readonly pointerLocked: boolean;
   requestPointerLock(): void;
   exitPointerLock(): void;

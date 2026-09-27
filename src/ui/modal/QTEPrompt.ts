@@ -17,6 +17,8 @@ export class QTEPrompt implements Modal {
   private readonly dots: HTMLDivElement;
   private run: QteRun | null = null;
   private shown = -1;
+  /** The prompt's action a finger is holding down (touch mode: the prompt is the button). */
+  private tapped: InputAction | null = null;
   private resolve: (success: boolean) => void = () => {};
   private cancelHide: () => void = () => {};
 
@@ -25,6 +27,15 @@ export class QTEPrompt implements Modal {
     this.ring = el('div', 'yk-qte-ring', this.root);
     this.key = el('div', 'yk-qte-key', this.root);
     this.dots = el('div', 'yk-qte-dots', this.root);
+    this.root.addEventListener('pointerdown', (e) => {
+      this.root.setPointerCapture(e.pointerId);
+      this.untap();
+      this.tapped = this.run?.current ?? null;
+      if (this.tapped) host.ctx.input.setTouchButton(this.tapped, true);
+    });
+    this.root.addEventListener('pointerup', () => this.untap());
+    this.root.addEventListener('pointercancel', () => this.untap());
+    this.root.addEventListener('lostpointercapture', () => this.untap());
   }
 
   start(keys: readonly InputAction[], windowSec: number): Promise<boolean> {
@@ -72,6 +83,11 @@ export class QTEPrompt implements Modal {
     toggle(this.root, success ? 'is-success' : 'is-fail', true);
     this.settle(success);
     this.cancelHide = this.host.clock.schedule(HIDE_SEC, () => toggle(this.root, 'is-on', false));
+  }
+
+  private untap(): void {
+    if (this.tapped) this.host.ctx.input.setTouchButton(this.tapped, false);
+    this.tapped = null;
   }
 
   private settle(success: boolean): void {
