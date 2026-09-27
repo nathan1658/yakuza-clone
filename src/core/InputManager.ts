@@ -52,6 +52,32 @@ const SOURCE_LABELS: Readonly<Record<string, string>> = {
   Mouse2: 'RMB',
 };
 
+/** Button faces of the on-screen controls; getLabel() returns these in touch mode. */
+const TOUCH_LABELS: Readonly<Partial<Record<InputAction, string>>> = {
+  lightAttack: '輕',
+  heavyAttack: '重',
+  guard: '防',
+  dodge: '閃',
+  interact: '互動',
+  grab: '抓',
+  heatAction: '極',
+  lockOn: '鎖',
+  pause: '☰',
+  confirm: '撳',
+  cancel: '✕',
+};
+
+/** Every action's on-screen source, next to its keys. */
+function touchSource(action: InputAction): string {
+  return `Touch:${action}`;
+}
+
+function withTouchSources(bindings: typeof BINDINGS): Record<InputAction, readonly string[]> {
+  const out = {} as Record<InputAction, readonly string[]>;
+  for (const action of Object.keys(bindings) as InputAction[]) out[action] = [...bindings[action], touchSource(action)];
+  return out;
+}
+
 /** Human label for a source: 'KeyJ' → 'J', 'Digit1' → '1', 'Space' → 'SPACE'. */
 export function sourceLabel(source: string): string {
   return SOURCE_LABELS[source] ?? source.replace(/^(Key|Digit)/, '').toUpperCase();
@@ -67,9 +93,11 @@ const LOOK_SPIKE_PX = 250;
 const ESCAPE_LOCK_WINDOW_MS = 300;
 
 export class InputManager implements IInputManager {
-  private readonly state = new InputState<InputAction>(BINDINGS);
+  private readonly state = new InputState<InputAction>(withTouchSources(BINDINGS));
   private readonly look = { x: 0, y: 0 };
   private readonly move = { x: 0, y: 0 };
+  private readonly stick = { x: 0, y: 0 };
+  private touchMode = matchMedia('(pointer: coarse)').matches;
   private readonly zero = { x: 0, y: 0 };
   /** Set by exitPointerLock(): the next unlock is intentional, not a pause. */
   private expectingUnlock = false;
@@ -81,6 +109,7 @@ export class InputManager implements IInputManager {
     window.addEventListener('keyup', this.onKeyUp);
     window.addEventListener('blur', this.onBlur);
     window.addEventListener('mouseup', this.onMouseUp);
+    window.addEventListener('pointerdown', this.onPointerDown, true);
     document.addEventListener('visibilitychange', this.onVisibilityChange);
     document.addEventListener('pointerlockchange', this.onPointerLockChange);
     container.addEventListener('mousedown', this.onMouseDown);
@@ -89,6 +118,14 @@ export class InputManager implements IInputManager {
   }
 
   get pointerLocked(): boolean {
+    return this.touchMode || this.mouseLocked;
+  }
+
+  get touch(): boolean {
+    return this.touchMode;
+  }
+
+  private get mouseLocked(): boolean {
     return document.pointerLockElement === this.container;
   }
 
@@ -118,6 +155,7 @@ export class InputManager implements IInputManager {
    */
   getMoveVector(): { x: number; y: number } {
     if (!document.hasFocus()) return this.zeroed();
+    if (this.stick.x !== 0 || this.stick.y !== 0) return this.stick;
     const s = this.state;
     const x = axis(s.isDown('moveRight'), s.isDown('moveLeft'));
     const y = axis(s.isDown('moveForward'), s.isDown('moveBack'));
@@ -133,7 +171,22 @@ export class InputManager implements IInputManager {
   }
 
   getLabel(action: InputAction): string {
-    return sourceLabel(BINDINGS[action][0]);
+    return (this.touchMode && TOUCH_LABELS[action]) || sourceLabel(BINDINGS[action][0]);
+  }
+
+  setTouchButton(action: InputAction, down: boolean): void {
+    if (down) this.state.press(touchSource(action));
+    else this.state.release(touchSource(action));
+  }
+
+  setTouchStick(x: number, y: number): void {
+    this.stick.x = x;
+    this.stick.y = y;
+  }
+
+  addTouchLook(dx: number, dy: number): void {
+    this.look.x += dx;
+    this.look.y += dy;
   }
 
   requestPointerLock(): void {
@@ -147,7 +200,7 @@ export class InputManager implements IInputManager {
   }
 
   exitPointerLock(): void {
-    if (!this.pointerLocked) return;
+    if (!this.mouseLocked) return;
     this.expectingUnlock = true;
     document.exitPointerLock();
   }
@@ -180,8 +233,15 @@ export class InputManager implements IInputManager {
     this.state.release(e.code);
   };
 
+  /** Last pointer wins: a finger switches to the on-screen controls, a mouse click back. */
+  private readonly onPointerDown = (e: PointerEvent): void => {
+    this.touchMode = e.pointerType !== 'mouse';
+  };
+
   private readonly onMouseDown = (e: MouseEvent): void => {
-    if (!this.pointerLocked) {
+    // Taps also fire compatibility mouse events; the on-screen controls already handled them.
+    if (this.touchMode) return;
+    if (!this.mouseLocked) {
       // The click that grabs the pointer is not a game action.
       this.requestPointerLock();
       return;
@@ -196,7 +256,7 @@ export class InputManager implements IInputManager {
   };
 
   private readonly onMouseMove = (e: MouseEvent): void => {
-    if (!this.pointerLocked) return;
+    if (!this.mouseLocked) return;
     if (Math.abs(e.movementX) > LOOK_SPIKE_PX || Math.abs(e.movementY) > LOOK_SPIKE_PX) return;
     this.look.x += e.movementX;
     this.look.y += e.movementY;
@@ -204,6 +264,7 @@ export class InputManager implements IInputManager {
 
   private readonly onBlur = (): void => {
     this.state.releaseAll();
+    this.setTouchStick(0, 0);
   };
 
   private readonly onVisibilityChange = (): void => {
@@ -211,7 +272,7 @@ export class InputManager implements IInputManager {
   };
 
   private readonly onPointerLockChange = (): void => {
-    if (this.pointerLocked) {
+    if (this.mouseLocked) {
       this.expectingUnlock = false;
       return;
     }
