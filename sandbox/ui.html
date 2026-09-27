@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-HK">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UI sandbox</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&family=Noto+Serif+TC:wght@700;900&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+      #game-root {
+        position: fixed; inset: 0;
+        background:
+          radial-gradient(ellipse at 30% 20%, rgba(255, 46, 136, 0.35), transparent 45%),
+          radial-gradient(ellipse at 75% 30%, rgba(34, 230, 255, 0.25), transparent 40%),
+          linear-gradient(to bottom, #1b1422, #3a2c30 60%, #16141a);
+      }
+      #ui-root { position: fixed; inset: 0; pointer-events: none; }
+      #scenes {
+        position: fixed; left: 50%; top: 6px; z-index: 1000; transform: translateX(-50%);
+        display: flex; gap: 4px; font: 12px ui-monospace, Menlo, monospace;
+      }
+      #scenes button { padding: 3px 8px; font: inherit; color: #eee; background: #222c; border: 1px solid #555; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <div id="game-root"></div>
+    <div id="ui-root"></div>
+    <div id="scenes"></div>
+    <script type="module" src="/sandbox/ui/main.ts"></script>
+  </body>
+</html>
