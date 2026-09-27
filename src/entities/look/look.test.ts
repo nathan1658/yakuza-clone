@@ -9,6 +9,12 @@ const TOPS: TopStyle[] = ['tshirt', 'shirt', 'hawaiian', 'tank', 'jacket', 'leat
 const BOTTOMS: BottomStyle[] = ['jeans', 'slacks', 'shorts', 'skirt'];
 const ACCESSORIES: Accessory[] = ['sunglasses', 'goldChain', 'cigarette', 'watch', 'headband', 'tattooArms', 'earring', 'glasses', 'cap'];
 
+const max = (a: ArrayLike<number>): number => {
+  let m = -Infinity;
+  for (let i = 0; i < a.length; i++) m = Math.max(m, a[i]);
+  return m;
+};
+
 /** The two custom looks narrative spawns (npcs.ts). */
 const CUSTOM: CharacterAppearance[] = [
   { height: 1.68, build: 'heavy', skinTone: 0xb07a4f, hair: 'crew', hairColor: 0x1a1a1a, top: 'singlet', topColor: 0xf2efe6, bottom: 'shorts', bottomColor: 0x2f3b4c, shoeColor: 0x3a3a3a, accessories: ['watch'] },
@@ -19,13 +25,13 @@ function check(a: CharacterAppearance): void {
   const { geometry: g, proportions: p } = buildCharacterGeometry(a);
   const n = g.getAttribute('position').count;
   expect(n).toBeGreaterThan(300);
-  for (const name of ['normal', 'color', 'skinIndex', 'skinWeight', 'glow', 'hullNormal']) {
+  for (const name of ['normal', 'color', 'accent', 'mat', 'ao', 'skinIndex', 'skinWeight', 'hullNormal']) {
     expect(g.getAttribute(name).count, name).toBe(n);
   }
   const skin = g.getAttribute('skinIndex').array;
-  expect(Math.max(...skin)).toBeLessThan(BONES.length);
+  expect(max(skin)).toBeLessThan(BONES.length);
   const idx = g.index!.array;
-  expect(Math.max(...idx)).toBeLessThan(n);
+  expect(max(idx)).toBeLessThan(n);
   const pos = g.getAttribute('position');
   let top = -Infinity;
   let bottom = Infinity;

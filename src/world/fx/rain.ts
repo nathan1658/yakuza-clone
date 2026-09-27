@@ -1,6 +1,6 @@
 import { AdditiveBlending, BufferGeometry, Float32BufferAttribute, Mesh, ShaderMaterial, Uint16BufferAttribute } from 'three';
 import { mulberry32 } from '../data/rng';
-import type { WorldUniforms } from '../rendering/uniforms';
+import { STREET_LIGHT_GLSL, type WorldUniforms } from '../rendering/uniforms';
 
 const STREAKS = 12000;
 
@@ -10,6 +10,8 @@ uniform float uRain;
 attribute vec3 corner;
 varying float vAlpha;
 varying float vSide;
+varying vec3 vLit;
+${STREET_LIGHT_GLSL}
 const vec3 BOX = vec3(36.0, 22.0, 36.0);
 void main() {
   float speed = 11.0 + 5.0 * position.y;
@@ -28,15 +30,18 @@ void main() {
   gl_Position = projectionMatrix * mv * step(corner.z, uRain);
   vAlpha = (1.0 - corner.y) * smoothstep(0.4, 2.0, dist) * (1.0 - smoothstep(12.0, 20.0, dist));
   vSide = corner.x;
+  vLit = streetLight(head);
 }
 `;
 
 const FRAGMENT = /* glsl */ `
 varying float vAlpha;
 varying float vSide;
+varying vec3 vLit;
 void main() {
   float a = vAlpha * (1.0 - abs(vSide)) * 0.55;
-  gl_FragColor = vec4(vec3(0.62, 0.68, 0.8) * a, 1.0);
+  // Faint everywhere, glowing in the colour of any lamp or neon it falls past.
+  gl_FragColor = vec4((vec3(0.62, 0.68, 0.8) * 0.4 + vLit * 0.05) * a, 1.0);
 }
 `;
 
@@ -71,7 +76,7 @@ export function createRain(u: WorldUniforms): Mesh {
   g.setAttribute('corner', new Float32BufferAttribute(corner, 3));
   g.setIndex(new Uint16BufferAttribute(idx, 1));
   const material = new ShaderMaterial({
-    uniforms: { uTime: u.uTime, uRain: u.uRain },
+    uniforms: { uTime: u.uTime, uRain: u.uRain, uLightPos: u.uLightPos, uLightCol: u.uLightCol },
     vertexShader: VERTEX,
     fragmentShader: FRAGMENT,
     blending: AdditiveBlending,

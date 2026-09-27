@@ -1,90 +1,157 @@
-/** Accessories as data: each one is a handful of parts on the right bone. */
+/** Accessories as data, each sitting on the sculpted head or the torso/arm profiles. */
 import type { Accessory } from '../../core/types';
-import { facePt, HEAD_R, headCentre, type Look } from './body';
-import { MeshBuilder } from './MeshBuilder';
+import { arm, ringAt, surfaceAt, TAU, TORSO_BUMPS, torsoRings, torsoSkin, WRIST_DY, type Look } from './body';
+import type { Head } from './head';
+import { add, KIND, lerp, MeshBuilder, norm, paint, rigid, sub, type P, type Paint, type Ring, type V } from './MeshBuilder';
 
-const GOLD = 0xd4a93a;
-const DARK_LENS = 0x0c0c10;
-const FRAME = 0x2a2a2a;
-const INK = 0x24354a;
-const BAND = 0xb02020;
-const CAP = 0x2c3e66;
-const WATCH = 0xb8b8c0;
-const PAPER = 0xefeae0;
-const EMBER = 0xff6a1a;
+const GOLD = paint(0xd4a93a, KIND.metal, 0.28, 1);
+const STEEL = paint(0xb8b8c0, KIND.metal, 0.32, 1);
+const LENS = paint(0x07080b, KIND.glass, 0.04);
+const FRAME = paint(0x111111, KIND.plain, 0.3);
+const WIRE = paint(0x8c8578, KIND.metal, 0.35, 1);
 
-type AccessoryBuilder = (b: MeshBuilder, look: Look) => void;
+type AccessoryBuilder = (b: MeshBuilder, look: Look, head: Head) => void;
 
-const EAR_X = HEAD_R[0] - 0.002;
+const HEAD = rigid('head');
 
-function templeArms(b: MeshBuilder, color: number): void {
-  for (const x of [1, -1]) b.box('head', b.at('head', 0.078 * x, 0.12, -0.005), [0.004, 0.006, 0.09], color);
+/** Temple arm from the frame's outer end back over the ear. */
+function templeArms(head: Head, b: MeshBuilder, pt: Paint): void {
+  for (const x of [1, -1]) {
+    const rings: Ring[] = [
+      { c: head.face(x * 0.061, 0.02, 0.012).p, rx: 0.0022, rz: 0.003, n: 3 },
+      ...[1.05, 1.3, 1.56, 1.72].map((ph): Ring => ({ c: head.surf(1.38, x * ph, 0.0055), rx: 0.0024, rz: 0.0018, n: 3, f: head.normal(1.38, x * ph) })),
+    ];
+    b.sweep(rings, { sides: 6, sub: 2, capStart: true, capEnd: true, side: [0, 1, 0] }, HEAD, pt);
+  }
 }
 
-const sunglasses: AccessoryBuilder = (b) => {
-  b.box('head', facePt(b, 0, 0.012, 0.006), [0.13, 0.026, 0.012], DARK_LENS);
-  templeArms(b, DARK_LENS);
+const sunglasses: AccessoryBuilder = (b, _look, head) => {
+  for (const x of [1, -1]) {
+    const s = head.face(x * 0.033, 0.011, 0.017);
+    b.ellipsoid(s.p, [0.0215, 0.0158, 0.0042], HEAD, LENS, { segs: 16, rot: [0, Math.atan2(s.n[0], s.n[2]) * 0.6, 0] });
+  }
+  const bar: Ring[] = [-0.061, -0.034, 0, 0.034, 0.061].map((x) => ({
+    c: head.face(x, x === 0 ? 0.02 : 0.026, 0.018).p, rx: 0.0034, rz: 0.003, n: 3, f: [0, 0, 1],
+  }));
+  b.sweep(bar, { sides: 6, sub: 3, capStart: true, capEnd: true, side: [0, 1, 0] }, HEAD, FRAME);
+  templeArms(head, b, FRAME);
 };
 
-const glasses: AccessoryBuilder = (b) => {
-  for (const x of [1, -1]) b.ring('head', facePt(b, 0.032 * x, 0.012, 0.008), 0.017, 0.0028, FRAME);
-  b.box('head', facePt(b, 0, 0.016, 0.008), [0.028, 0.004, 0.004], FRAME);
-  templeArms(b, FRAME);
+const glasses: AccessoryBuilder = (b, _look, head) => {
+  for (const x of [1, -1]) {
+    const s = head.face(x * 0.032, 0.011, 0.014);
+    b.torus(s.p, 0.0165, 0.0017, HEAD, WIRE, { rot: [0, Math.atan2(s.n[0], s.n[2]) * 0.6, 0], seg: 18, tube: 5 });
+  }
+  b.sweep([-0.016, 0, 0.016].map((x) => ({ c: head.face(x, 0.016, 0.014).p, rx: 0.0015, rz: 0.0015 })), { sides: 5, sub: 2 }, HEAD, WIRE);
+  templeArms(head, b, WIRE);
 };
 
-const goldChain: AccessoryBuilder = (b) => {
-  b.ring('chest', b.at('chest', 0, 0.2, 0.012), 0.078, 0.006, GOLD, { rot: [Math.PI / 2 + 0.45, 0, 0] });
+/** A heavy chain lying on the chest, dipping at the front. */
+const goldChain: AccessoryBuilder = (b, look) => {
+  const base = torsoRings(look, b.p.w);
+  const rings: Ring[] = [];
+  for (let i = 0; i <= 40; i++) {
+    const a = (TAU * i) / 40;
+    const y = 1.462 - 0.07 * Math.max(0, Math.cos(a)) ** 3;
+    const s = surfaceAt(base, TORSO_BUMPS, y, a, 0.02);
+    rings.push({ c: s.p, rx: 0.0038, rz: 0.0038 });
+  }
+  rings[40] = { ...rings[0] };
+  b.sweep(rings, { sides: 6 }, torsoSkin(b), GOLD);
 };
 
-const cigarette: AccessoryBuilder = (b) => {
-  const a = facePt(b, 0.018, -0.054, 0.002);
-  const tip: [number, number, number] = [a[0] + 0.03 * b.s, a[1] - 0.012 * b.s, a[2] + 0.055 * b.s];
-  b.tube('head', a, tip, 0.0045, 0.0045, PAPER, { sides: 5 });
-  const end: [number, number, number] = [tip[0] + 0.004 * b.s, tip[1] - 0.0016 * b.s, tip[2] + 0.007 * b.s];
-  b.tube('head', tip, end, 0.0048, 0.0048, EMBER, { sides: 5, glow: 1.5 });
+const cigarette: AccessoryBuilder = (b, _look, head) => {
+  const a = head.face(0.017, -0.0515, 0.001).p;
+  const dir = norm([0.28, -0.22, 1]);
+  const at = (d: number): V => add(a, [dir[0] * d, dir[1] * d, dir[2] * d]);
+  const r = 0.0042;
+  b.sweep([{ c: at(0), rx: r, rz: r }, { c: at(0.018), rx: r, rz: r }], { sides: 8 }, HEAD, paint(0xc89a5a, KIND.woven, 0.7));
+  b.sweep([{ c: at(0.018), rx: r, rz: r }, { c: at(0.058), rx: r, rz: r }], { sides: 8 }, HEAD, paint(0xefeae0, KIND.woven, 0.8));
+  b.sweep([{ c: at(0.058), rx: r, rz: r }, { c: at(0.062), rx: r * 0.96, rz: r * 0.96 }], { sides: 8 }, HEAD, paint(0x8a8680, KIND.plain, 0.9));
+  b.sweep([{ c: at(0.062), rx: r * 0.95, rz: r * 0.95 }, { c: at(0.067), rx: r * 0.7, rz: r * 0.7 }], { sides: 8, capEnd: true }, HEAD, paint(0xff6a1a, KIND.plain, 0.9, 0, { glow: 2.2 }));
 };
 
 const watch: AccessoryBuilder = (b, look) => {
-  const r = 0.036 * b.p.w.limb;
-  b.ring('forearmL', b.at('handL', 0, 0.035), r, 0.008, WATCH, { rot: [Math.PI / 2, 0, 0] });
-  b.box('forearmL', b.at('handL', r + 0.004, 0.035), [0.006, 0.024, 0.024], look.female ? GOLD : 0x202020);
+  const a = arm(b, 'L', look);
+  const y = a.top[1] + WRIST_DY + 0.032;
+  const ring = ringAt(a.rings, y);
+  const rings: Ring[] = [];
+  for (let i = 0; i <= 24; i++) {
+    const t = (TAU * i) / 24;
+    rings.push({ c: [ring.c[0] + Math.sin(t) * (ring.rx + 0.004), y, ring.c[2] + Math.cos(t) * (ring.rz + 0.004)], rx: 0.009, rz: 0.0028, n: 4, f: [Math.sin(t), 0, Math.cos(t)] });
+  }
+  rings[24] = { ...rings[0] };
+  const strap = look.female ? GOLD : paint(0x241a14, KIND.leather, 0.5);
+  b.sweep(rings, { sides: 6, side: [0, 1, 0] }, a.skin, strap);
+  const face: P = [ring.c[0] + ring.rx + 0.007, y, ring.c[2]];
+  b.ellipsoid(face, [0.004, 0.0155, 0.0155], a.skin, look.female ? GOLD : STEEL, { segs: 14 });
+  b.ellipsoid(add(face, [0.0028, 0, 0]), [0.0018, 0.012, 0.012], a.skin, paint(0xe8e4d8, KIND.glass, 0.06), { segs: 14 });
 };
 
-const headband: AccessoryBuilder = (b) => {
-  const c = headCentre(b);
-  const lo: [number, number, number] = [c[0], c[1] + 0.03 * b.s, c[2]];
-  const hi: [number, number, number] = [c[0], c[1] + 0.058 * b.s, c[2]];
-  b.tube('head', lo, hi, HEAD_R[0] + 0.006, HEAD_R[0] + 0.003, BAND, { depth: HEAD_R[2] / HEAD_R[0], open: true, sides: 12 });
-  for (const x of [0.012, -0.012]) b.box('head', b.at('head', x, 0.1, -0.1), [0.018, 0.09, 0.006], BAND, { rot: [0.35, 0, x * 12] });
-};
-
-const tattooArms: AccessoryBuilder = (b) => {
-  const limb = b.p.w.limb;
-  for (const s of ['L', 'R'] as const) {
-    // Tubes along -Y are rotated pi about Z, so theta pi..2pi lands on the outer (+X) side of the left arm.
-    // Half arcs of 4 sides put the ink's vertices on the 8-sided arm's, so a sleeve (+6 mm) always covers it.
-    const sign = s === 'L' ? 1 : -1;
-    const ink = { sides: 4, open: true, theta: [s === 'L' ? Math.PI : 0, Math.PI] as const };
-    b.tube(`upperArm${s}`, b.at(`upperArm${s}`, 0, -0.03), b.at(`forearm${s}`, 0, 0.02), 0.052 * limb + 0.003, 0.043 * limb + 0.003, INK, ink);
-    b.tube(`forearm${s}`, b.at(`forearm${s}`, 0, -0.03), b.at(`hand${s}`, 0, 0.02), 0.042 * limb + 0.003, 0.033 * limb + 0.003, INK, ink);
-    b.box(`hand${s}`, b.at(`hand${s}`, sign * (0.025 * Math.sqrt(limb) + 0.002), -0.05), [0.004, 0.045, 0.05], INK);
+/** A tied band round the forehead with two tails at the back. */
+const headband: AccessoryBuilder = (b, _look, head) => {
+  const red = paint(0xb02020, KIND.woven, 0.8);
+  const line = (ph: number) => lerp(0.96, 1.3, (1 - Math.cos(ph)) / 2);
+  const rings: Ring[] = [];
+  for (let i = 0; i <= 40; i++) {
+    const ph = (TAU * i) / 40;
+    rings.push({ c: head.surf(line(ph), ph, 0.013), rx: 0.013, rz: 0.003, n: 3, f: head.normal(line(ph), ph) });
+  }
+  rings[40] = { ...rings[0] };
+  b.sweep(rings, { sides: 6, side: [0, 1, 0] }, HEAD, red);
+  const knot = head.surf(line(Math.PI), Math.PI, 0.018);
+  for (const x of [1, -1]) {
+    b.sweep([
+      { c: knot, rx: 0.011, rz: 0.0025, n: 3, f: [0, 0, -1] },
+      { c: add(knot, [x * 0.012, -0.05, -0.012]), rx: 0.01, rz: 0.0025, n: 3, f: [0, 0.2, -1] },
+      { c: add(knot, [x * 0.02, -0.095, -0.01]), rx: 0.008, rz: 0.0025, n: 3, f: [0, 0, -1] },
+    ], { sides: 6, sub: 3, side: [1, 0, 0] }, HEAD, red);
   }
 };
 
-const earring: AccessoryBuilder = (b) => {
-  b.ball('head', b.at('head', EAR_X + 0.004, 0.072, -0.004), [0.006, 0.006, 0.006], GOLD, { segs: 5 });
+const earring: AccessoryBuilder = (b, _look, head) => {
+  const th = Math.PI / 2 + 0.04;
+  const ph = Math.PI / 2 + 0.13;
+  const lobe = add(head.surf(th, ph, 0.004), [0.002, -0.035, 0.004]);
+  b.torus(lobe, 0.0065, 0.0013, HEAD, GOLD, { rot: [0, Math.PI / 2 - 0.3, 0], seg: 14, tube: 5 });
 };
 
-const cap: AccessoryBuilder = (b) => {
-  const c = headCentre(b);
-  b.ball('head', [c[0], c[1] + 0.012 * b.s, c[2]], [HEAD_R[0] * 1.12, HEAD_R[1] * 0.95, HEAD_R[2] * 1.1], CAP, { polar: [0, 0.5 * Math.PI], segs: 12 });
-  b.box('head', b.at('head', 0, 0.118, 0.125), [0.15, 0.008, 0.09], CAP, { rot: [-0.12, 0, 0] });
+/** Baseball cap: a crown over the hair and a curved brim. */
+const cap: AccessoryBuilder = (b, _look, head) => {
+  const navy = paint(0x2c3e66, KIND.woven, 0.8);
+  const edge = (ph: number) => lerp(1.02, 1.3, (1 - Math.cos(ph)) / 2);
+  const pts: V[][] = [];
+  const hints: V[][] = [];
+  for (let i = 0; i <= 10; i++) {
+    const row: V[] = [];
+    const hint: V[] = [];
+    for (let k = 0; k < 40; k++) {
+      const ph = (TAU * k) / 40;
+      const th = (edge(ph) * i) / 10;
+      row.push(head.surf(th, ph, 0.02 - 0.004 * (i / 10) ** 2));
+      hint.push(head.normal(th, ph));
+    }
+    pts.push(row);
+    hints.push(hint);
+  }
+  b.grid(pts, hints, HEAD, navy);
+  const brim: Ring[] = [-0.9, -0.45, 0, 0.45, 0.9].map((ph): Ring => {
+    const e = head.surf(edge(ph) - 0.02, ph, 0.02);
+    const out = norm(sub(e, head.c));
+    const forward = norm([out[0] * 0.6, -0.12, Math.max(0.4, out[2])]);
+    return { c: add(e, [forward[0] * 0.036, forward[1] * 0.036 - Math.abs(ph) * 0.008, forward[2] * 0.036]), rx: 0.038, rz: 0.003, n: 4, f: [0, 1, -0.12] };
+  });
+  b.sweep(brim, { sides: 8, sub: 3, capStart: true, capEnd: true, side: [0, 0, 1] }, HEAD, navy);
+  b.ellipsoid(head.surf(0, 0, 0.022), [0.007, 0.004, 0.007], HEAD, navy, { segs: 8 });
 };
 
-const ACCESSORIES: Record<Accessory, AccessoryBuilder> = {
+/** Tattoos are painted on the arm skin by the shader (body.ts gives it the tattoo kind); nothing to add here. */
+const tattooArms: AccessoryBuilder = () => {};
+
+const ACCESSORIES: Readonly<Record<Accessory, AccessoryBuilder>> = {
   sunglasses, goldChain, cigarette, watch, headband, tattooArms, earring, glasses, cap,
 };
 
-export function buildAccessories(b: MeshBuilder, look: Look): void {
-  for (const a of look.accessories ?? []) ACCESSORIES[a](b, look);
+export function buildAccessories(b: MeshBuilder, look: Look, head: Head): void {
+  for (const a of look.accessories ?? []) ACCESSORIES[a](b, look, head);
 }

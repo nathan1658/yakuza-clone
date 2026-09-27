@@ -109,7 +109,8 @@ export class PostProcessing implements IRenderPipeline {
     composer.renderTarget2.dispose();
     composer.renderTarget2 = new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: MSAA });
     composer.readBuffer = composer.renderTarget2;
-    this.bloom = new UnrealBloomPass(new Vector2(1, 1), 0.9, 0.55, 0.8);
+    // Tight, thresholded bloom: neon and lamps glow without fogging the whole frame.
+    this.bloom = new UnrealBloomPass(new Vector2(1, 1), 0.6, 0.28, 1.05);
     this.grade = new ShaderPass(GRADE);
     // Even number of swapping passes (grade, output) so rt2 is the read buffer again every frame.
     composer.addPass(new RenderPass(scene, camera));

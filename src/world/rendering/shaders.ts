@@ -46,6 +46,11 @@ vec3 facadeTint(float h) {
   return h < 0.5 ? vec3(1.0, 0.6, 0.3) : (h < 0.9 ? vec3(0.7, 0.85, 1.0) : vec3(0.45, 1.0, 0.62));
 }
 
+vec3 facadeGoods(float h) {
+  return h < 0.2 ? vec3(0.85, 0.2, 0.15) : h < 0.35 ? vec3(0.95, 0.8, 0.3) : h < 0.5 ? vec3(0.9, 0.9, 0.85)
+    : h < 0.62 ? vec3(0.25, 0.45, 0.8) : h < 0.74 ? vec3(0.3, 0.65, 0.35) : h < 0.86 ? vec3(0.95, 0.55, 0.2) : vec3(0.6, 0.35, 0.5);
+}
+
 // Ground floor: a row of shops, each either open and lit or behind a roller shutter.
 vec3 facadeShops(inout vec3 alb, vec2 p, vec2 aa, float seed, float lod) {
   const float SHOP = 4.6;
@@ -56,11 +61,28 @@ vec3 facadeShops(inout vec3 alb, vec2 p, vec2 aa, float seed, float lod) {
   float fascia = facadeRect(vec2(fu, p.y), vec2(-1.0, 3.3), vec2(SHOP + 1.0, 4.4), aa);
   vec3 emi = vec3(0.0);
   if (h < 0.62) {
-    vec3 inside = h < 0.3 ? vec3(1.0, 0.75, 0.48) : vec3(0.78, 0.92, 1.0);
-    // Shelves of goods: blocks of random brightness, ~0.45 m wide and 0.4 m tall.
-    float goods = mix(0.4 + 0.6 * worldHash(floor(vec2(fu * 2.2 + shop * 13.0, p.y * 2.5)) + seed), 0.7, lod);
-    float tubes = 0.3 + 0.7 * smoothstep(1.8, 3.0, p.y);
-    emi = opening * inside * tubes * goods * (0.5 + 0.4 * worldHash(vec2(shop, seed)));
+    vec3 inside = h < 0.3 ? vec3(1.0, 0.78, 0.52) : vec3(0.8, 0.92, 1.0);
+    // Shelving: boards every 42 cm, packed with goods of random width, height and colour.
+    const float SHELF = 0.42;
+    float row = floor((p.y - 0.3) / SHELF);
+    float fy = p.y - 0.3 - row * SHELF;
+    float cw = 0.09 + 0.07 * worldHash(vec2(row, shop + seed));
+    float col = floor((fu + row * 0.37) / cw);
+    float fx = fu + row * 0.37 - col * cw;
+    float hh = worldHash(vec2(col + shop * 31.0, row + seed));
+    float item = step(fy, 0.12 + 0.24 * hh) * smoothstep(0.0, 0.012, fx) * smoothstep(cw, cw - 0.012, fx);
+    float board = 1.0 - smoothstep(0.0, 0.03 + aa.y, fy);
+    float shelves = step(0.3, p.y) * step(p.y, 2.4);
+    vec3 wall = vec3(0.32) + 0.08 * worldHash(vec2(shop, seed + 2.0));
+    vec3 stock = mix(wall, facadeGoods(worldHash(vec2(col * 1.7 + row, shop + seed))) * (0.6 + 0.4 * hh), item * shelves);
+    stock *= 1.0 - 0.75 * board * shelves;
+    // Ceiling tubes, light falling off toward the floor, a dim counter in front.
+    float tubes = facadeRect(vec2(fu, p.y), vec2(0.6, 2.72), vec2(SHOP - 0.6, 2.82), aa);
+    float fall = 0.35 + 0.65 * smoothstep(0.2, 2.6, p.y);
+    float counter = 1.0 - 0.6 * facadeRect(vec2(fu, p.y), vec2(0.8, -1.0), vec2(SHOP * 0.55, 0.95), aa);
+    stock = mix(stock, vec3(0.5), lod);
+    float level = 0.55 + 0.35 * worldHash(vec2(shop, seed));
+    emi = opening * inside * (stock * fall * counter * level * 1.1 + tubes * 2.2);
     alb = mix(alb, vec3(0.03), opening);
   } else {
     float ribs = mix(0.82 + 0.18 * sin(p.y * 56.0), 0.9, lod);
@@ -155,18 +177,23 @@ float groundSurface(inout vec3 alb) {
 }
 
 float groundRoughness(float r, float puddle) {
-  return mix(mix(r, r * 0.45, uWet), 0.05, puddle);
+  return mix(mix(r, r * 0.6, uWet), 0.05, puddle);
 }
 
-/** Puddles mirror the neon, jiggled by the rain; merely wet paving smears it into streaks. */
+/** Soft knee above 1: a lamp head stays a bright spot in the wet instead of a blinding disc. */
+vec3 reflKnee(vec3 c, float k) {
+  float l = max(max(c.r, c.g), c.b);
+  return c / (1.0 + max(l - 1.0, 0.0) * k);
+}
+
+/** Puddles mirror the neon, jiggled by the rain; merely wet paving drags each light into a streak toward the eye. */
 vec3 groundReflection(float puddle) {
   vec2 p = vWorldPos.xz * 5.0;
   vec2 ripple = (vec2(worldNoise(p + uTime * 4.0), worldNoise(p.yx - uTime * 4.0)) - 0.5) * 0.008 * uRain;
-  vec3 sharp = reflSample(vWorldPos, ripple, 0.0);
-  vec3 smear = (reflSample(vWorldPos, vec2(0.0), 3.0)
-    + reflSample(vWorldPos, vec2(0.0, 0.02), 3.5)
-    + reflSample(vWorldPos, vec2(0.0, -0.02), 3.5)) * (1.0 / 3.0);
-  return mix(smear * 0.5 * uWet * vGround.y, sharp, puddle) * reflFresnel(vWorldPos);
+  vec3 sharp = reflKnee(reflSample(vWorldPos, ripple, 0.0), 0.25);
+  vec3 smear = vec3(0.0);
+  for (int i = -2; i <= 2; i++) smear += reflKnee(reflSample(vWorldPos, vec2(0.0, float(i) * 0.02), 2.2), 0.9);
+  return mix(smear * 0.1 * uWet * vGround.y, sharp, puddle) * reflFresnel(vWorldPos);
 }
 `;
 

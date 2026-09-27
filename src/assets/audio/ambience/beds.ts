@@ -2,9 +2,10 @@ import { glide } from '../synth/env';
 import { biquad, chain, formant, gain, osc } from '../synth/nodes';
 import { noise, type NoiseKind } from '../synth/noise';
 import { mulberry32, seedFrom } from '../synth/rng';
-import { hiss, tone, vary } from '../sfx/kit';
+import { hiss, vary } from '../sfx/kit';
 import type { Kit } from '../sfx/types';
 import { seamless, type LayerId } from './levels';
+import { drips, rain, type Stereo } from './rainSynth';
 
 /** A looping stereo bed: `render` fills `seconds + tail`; the tail is folded into the head. */
 interface Bed {
@@ -84,31 +85,29 @@ function wave(k: Kit, sides: Kit[], t: number, rise: number, fall: number): void
   chain(noise(k.c, t, rise + fall + 0.05, 'pink', k.r()), lp, g, pick(k, sides).out);
 }
 
+/** Play samples rendered in JS from t = 0 through a gentle final band-limit: no rumble, no hiss. */
+function play(k: Kit, [left, right]: Stereo): void {
+  const buf = k.c.createBuffer(2, left.length, k.c.sampleRate);
+  buf.copyToChannel(left, 0);
+  buf.copyToChannel(right, 1);
+  const src = k.c.createBufferSource();
+  src.buffer = buf;
+  // Web Audio's high/low-pass Q is in dB: -3 is Butterworth, flat up to the corner.
+  chain(src, biquad(k.c, 'highpass', 80, -3), biquad(k.c, 'lowpass', 6500, -3), k.out);
+  src.start(0);
+}
+
 export const BEDS: Readonly<Record<LayerId, Bed>> = {
   rain: {
-    seconds: 10, tail: 1,
+    seconds: 12, tail: 1,
     render(k, len) {
-      wash(k, len, 'white', 'highpass', 1200, 0.5, 0.22);
-      wash(k, len, 'pink', 'bandpass', 1600, 0.5, 0.3);
-      wash(k, len, 'brown', 'lowpass', 260, 0.7, 0.35, 0.15);
-      const sides = spread(k);
-      for (let i = 0; i < len * 45; i++) {
-        hiss(pick(k, sides), vary(k, 0, len - 0.05), { freq: vary(k, 2500, 7000), q: 3, peak: vary(k, 0.05, 0.25), decay: vary(k, 0.008, 0.03) });
-      }
+      play(k, rain(k.r, k.c.sampleRate, len));
     },
   },
   drips: {
     seconds: 12, tail: 1,
     render(k, len) {
-      wash(k, len, 'pink', 'bandpass', 2600, 2, 0.06, 0.6);
-      const sides = spread(k);
-      for (let i = 0; i < len * 1.4; i++) {
-        const side = pick(k, sides);
-        const t = vary(k, 0, len - 0.2);
-        const f = vary(k, 1300, 2600);
-        tone(side, t, { freq: f, to: f * 0.72, glide: 0.015, peak: vary(k, 0.2, 0.5), decay: vary(k, 0.05, 0.12) });
-        hiss(side, t, { type: 'highpass', freq: 4000, peak: 0.12, decay: 0.006 });
-      }
+      play(k, drips(k.r, k.c.sampleRate, len));
     },
   },
   city: {

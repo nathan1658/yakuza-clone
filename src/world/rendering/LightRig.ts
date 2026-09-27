@@ -1,5 +1,6 @@
 import { Color, DirectionalLight, HemisphereLight, PointLight, Vector3 } from 'three';
 import type { Object3D } from 'three';
+import { LIGHT_SLOTS, type WorldUniforms } from './uniforms';
 
 /** Something in the city that deserves a real light when the camera is near it. */
 export interface LightSource {
@@ -12,7 +13,7 @@ export interface LightSource {
   readonly intensity: number;
 }
 
-const POINT_LIGHTS = 8;
+const POINT_LIGHTS = LIGHT_SLOTS;
 const POINT_RANGE = 18;
 const REASSIGN_SEC = 0.25;
 const FADE_SEC = 0.3;
@@ -48,7 +49,10 @@ export class LightRig {
   private readonly snapped = new Vector3();
   private clock = REASSIGN_SEC;
 
-  constructor(private readonly sources: readonly LightSource[]) {
+  constructor(
+    private readonly sources: readonly LightSource[],
+    private readonly u: WorldUniforms,
+  ) {
     this.colors = sources.map((s) => new Color(s.color));
     const sun = this.sun;
     sun.castShadow = true;
@@ -109,6 +113,17 @@ export class LightRig {
       const k = slot.level * slot.level * (3 - 2 * slot.level);
       slot.light.intensity = slot.source >= 0 ? this.sources[slot.source].intensity * k : 0;
     }
+    this.publish();
+  }
+
+  /** Hand the lit slots to the effects that glow near them. */
+  private publish(): void {
+    const pos = this.u.uLightPos.value;
+    const col = this.u.uLightCol.value;
+    this.slots.forEach((slot, i) => {
+      pos[i].copy(slot.light.position);
+      col[i].copy(slot.light.color).multiplyScalar(slot.light.intensity);
+    });
   }
 
   private follow(focus: Vector3): void {
