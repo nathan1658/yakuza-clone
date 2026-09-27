@@ -1,9 +1,11 @@
 /**
- * One character's skeleton, skinned mesh and animator. One draw call
- * (two while outlined). The rig root is the character's object3d.
+ * One character's skeleton, skinned mesh, animator and soft contact shadow.
+ * Two draw calls (three while outlined). The rig root is the character's
+ * object3d.
  */
 import {
-  Bone, Color, Group, MeshStandardMaterial, Object3D, Skeleton, SkinnedMesh, Sphere, Vector3, type BufferGeometry, type MeshBasicMaterial,
+  Bone, Color, DataTexture, Group, LinearFilter, LinearMipmapLinearFilter, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D,
+  PlaneGeometry, Skeleton, SkinnedMesh, Sphere, Vector3, type BufferGeometry,
 } from 'three';
 import type { AnimClip, AnimClipDef, BoneName, ICharacterRig, PlayAnimOptions } from '../../core/types';
 import { CLIP_LIBRARY } from '../anim/library';
@@ -14,6 +16,35 @@ import { createBodyMaterial, createOutlineMaterial } from './materials';
 import { BONE_PARENT, BONES, boneIndex, REF_HEIGHT } from './skeleton';
 
 const PALM_DROP = 0.06;
+/** Contact shadow: darkness, radius (m, scaled by height) and how far the body's length stretches it. */
+const BLOB_OPACITY = 0.62;
+const BLOB_R = 0.42;
+const BLOB_STRETCH = 1.1;
+
+let blobTexture: DataTexture | null = null;
+const blobGeometry = new PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+
+/** A soft black disc, darkest in the middle; no DOM needed, so it builds in tests too. */
+function blobMap(): DataTexture {
+  if (blobTexture) return blobTexture;
+  const n = 64;
+  const data = new Uint8Array(n * n * 4);
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const d = Math.hypot(x - n / 2 + 0.5, y - n / 2 + 0.5) / (n / 2);
+      const t = Math.min(1, Math.max(0, (d - 0.15) / 0.85));
+      data[(y * n + x) * 4 + 3] = Math.round(255 * (1 - t * t * (3 - 2 * t)) ** 1.5);
+    }
+  }
+  blobTexture = new DataTexture(data, n, n);
+  blobTexture.magFilter = LinearFilter;
+  blobTexture.minFilter = LinearMipmapLinearFilter;
+  blobTexture.generateMipmaps = true;
+  blobTexture.needsUpdate = true;
+  return blobTexture;
+}
+
+const _head = new Vector3();
 
 export class CharacterRig implements ICharacterRig {
   readonly root = new Group();
@@ -25,6 +56,8 @@ export class CharacterRig implements ICharacterRig {
   private readonly material: MeshStandardMaterial;
   private outline: SkinnedMesh<BufferGeometry, MeshBasicMaterial> | null = null;
   private readonly sockets: Record<'left' | 'right', Object3D>;
+  private readonly blob: Mesh<PlaneGeometry, MeshBasicMaterial>;
+  private readonly scale: number;
   private readonly flashColor = new Color();
   private flashLeft = 0;
   private flashDur = 1;
@@ -53,6 +86,16 @@ export class CharacterRig implements ICharacterRig {
     this.mesh.boundingSphere = new Sphere(new Vector3(0, p.H / 2, 0), p.H * 1.1);
     this.mesh.bind(new Skeleton(this.bones));
     this.root.add(this.mesh);
+
+    this.scale = s;
+    const blob = new MeshBasicMaterial({
+      color: 0x000000, map: blobMap(), transparent: true, depthWrite: false, opacity: BLOB_OPACITY,
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+    });
+    this.blob = new Mesh(blobGeometry, blob);
+    this.blob.name = 'contactShadow';
+    this.blob.renderOrder = -1;
+    this.root.add(this.blob);
 
     this.animator = new Animator(CLIP_LIBRARY[initial], s);
     this.update(0);
@@ -136,6 +179,7 @@ export class CharacterRig implements ICharacterRig {
     a.update(dt);
     for (let i = 0; i < this.bones.length; i++) this.bones[i].quaternion.fromArray(a.pose, i * 4);
     this.bones[0].position.set(this.hipsBind.x + a.root[0], this.hipsBind.y + a.root[1], this.hipsBind.z + a.root[2]);
+    this.placeBlob();
     if (this.flashLeft <= 0) return;
     this.flashLeft = Math.max(0, this.flashLeft - dt);
     this.material.emissive.copy(this.flashColor).multiplyScalar(this.flashLeft / this.flashDur);
@@ -147,7 +191,24 @@ export class CharacterRig implements ICharacterRig {
     this.root.removeFromParent();
     this.mesh.geometry.dispose();
     this.material.dispose();
+    this.blob.material.dispose();
     this.outline?.material.dispose();
+  }
+
+  /** Under the body between hips and head, stretched when lying down, fading as the body leaves the ground. */
+  private placeBlob(): void {
+    const hips = this.bones[0].position;
+    this.getBoneWorldPosition('head', _head);
+    this.root.worldToLocal(_head);
+    const dx = _head.x - hips.x;
+    const dz = _head.z - hips.z;
+    const along = Math.hypot(dx, dz);
+    const r = BLOB_R * this.scale * 2;
+    this.blob.position.set(hips.x + dx * 0.5, 0.012, hips.z + dz * 0.5);
+    this.blob.rotation.y = Math.atan2(dx, dz);
+    this.blob.scale.set(r, 1, r + along * BLOB_STRETCH);
+    const lift = Math.max(0, hips.y - this.hipsBind.y);
+    this.blob.material.opacity = BLOB_OPACITY * Math.max(0, 1 - lift / (0.9 * this.scale));
   }
 
   private socket(hand: BoneName, s: number): Object3D {

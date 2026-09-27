@@ -6,7 +6,7 @@ import { renderBed } from './beds';
 import { ambienceTargets, LAYERS, type AmbienceInput, type LayerId, type LayerLevels } from './levels';
 
 /** Loop gain at layer level 1 (beds are normalised to unit peak). */
-const BASE: LayerLevels = { rain: 0.5, drips: 0.35, city: 0.4, harbour: 0.5, neon: 0.12 };
+const BASE: LayerLevels = { rain: 0.65, drips: 0.35, city: 0.4, harbour: 0.5, neon: 0.12 };
 /** Time constant of layer level changes, seconds. */
 const GLIDE = 0.6;
 const EPS = 0.005;

@@ -82,6 +82,8 @@ function groundMaterial(u: WorldUniforms, paint: boolean): MeshStandardMaterial 
     shader.fragmentShader = after(shader.fragmentShader, 'color_fragment', 'float puddle = groundSurface(diffuseColor.rgb);');
     shader.fragmentShader = after(shader.fragmentShader, 'roughnessmap_fragment', 'roughnessFactor = groundRoughness(roughnessFactor, puddle);');
     shader.fragmentShader = after(shader.fragmentShader, 'emissivemap_fragment', 'totalEmissiveRadiance += groundReflection(puddle);');
+    // Wet, the planar reflection already mirrors every lamp: the lights' own highlights would paint a second, round glare disc.
+    shader.fragmentShader = after(shader.fragmentShader, 'lights_fragment_end', 'reflectedLight.directSpecular *= mix(1.0, 0.18, uWet);');
   };
   m.customProgramCacheKey = () => (paint ? 'world-paint' : 'world-ground');
   return m;

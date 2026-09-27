@@ -1,4 +1,4 @@
-import { Box3, FogExp2, Group, Vector2, Vector3 } from 'three';
+import { Box3, FogExp2, Group, Vector2, Vector3, type Texture } from 'three';
 import type {
   GameContext,
   GameSystem,
@@ -50,6 +50,7 @@ import { LightRig } from './rendering/LightRig';
 import { BATCH_STYLES, createMaterials } from './rendering/materials';
 import { PostProcessing } from './rendering/PostProcessing';
 import { Reflection } from './rendering/Reflection';
+import { createEnvironment } from './rendering/environment';
 import { createSignAtlas, loadSignFonts } from './rendering/signAtlas';
 import { createUniforms } from './rendering/uniforms';
 import { TramLine } from './TramLine';
@@ -92,6 +93,7 @@ export class World implements IWorld, GameSystem {
   private readonly forward = new Vector3();
   private readonly buffer = new Vector2();
   private lights: LightRig | null = null;
+  private env: Texture | null = null;
   private trams: TramLine | null = null;
   private screen: VideoScreen | null = null;
   private pager: Pager | null = null;
@@ -104,6 +106,10 @@ export class World implements IWorld, GameSystem {
 
   get weather(): WeatherKind {
     return this.weatherState.kind;
+  }
+
+  get environment(): Texture | null {
+    return this.env;
   }
 
   async init(): Promise<void> {
@@ -136,8 +142,9 @@ export class World implements IWorld, GameSystem {
     sources.push(SCREEN_LIGHT);
 
     await this.stage(0.65, '開霓虹');
-    this.lights = new LightRig(sources);
+    this.lights = new LightRig(sources, this.uniforms);
     this.lights.attach(this.root);
+    this.env = createEnvironment(this.ctx.engine.renderer);
 
     await this.stage(0.85, '落雨');
     this.root.add(createSky(this.uniforms), createRain(this.uniforms), createSplashes(this.uniforms));

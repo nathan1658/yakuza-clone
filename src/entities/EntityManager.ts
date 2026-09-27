@@ -5,7 +5,7 @@
 import { Vector3 } from 'three';
 import {
   FIXED_DT, type CharacterRole, type CharacterSpawnDef, type CombatState, type CombatStats, type Faction,
-  type GameContext, type GameSystem, type GameTime, type ICharacter, type IEntityManager,
+  type GameContext, type GameSystem, type GameTime, type ICharacter, type IEntityManager, type WeatherKind,
 } from '../core/types';
 import { Character, type FrameClock } from './Character';
 import { IdleBrain } from './IdleBrain';
@@ -14,6 +14,7 @@ import { separation } from './motion';
 import { Pedestrians } from './pedestrians/Pedestrians';
 import { PlayerController } from './PlayerController';
 import { playerSaveable } from './playerSave';
+import { characterLighting } from './rig/materials';
 
 type Filter = { role?: CharacterRole; faction?: Faction; alive?: boolean };
 
@@ -26,6 +27,10 @@ const SEPARATION_RATE = 12;
 const PLAYER_YIELD = 0.25;
 const SHADOW_MAX = 10;
 const SHADOW_RANGE_SQ = 30 * 30;
+/** How soaked clothes and hair get in each weather, and how fast (per second) they wet and dry. */
+const WETNESS: Readonly<Record<WeatherKind, number>> = { clear: 0.1, drizzle: 0.6, rain: 1 };
+const SOAK_RATE = 0.25;
+const DRY_RATE = 0.04;
 
 function matches(c: ICharacter, f: Filter | undefined): boolean {
   return !f || ((!f.role || c.role === f.role) && (!f.faction || c.faction === f.faction) && (f.alive === undefined || c.isAlive() === f.alive));
@@ -45,6 +50,7 @@ export class EntityManager implements IEntityManager, GameSystem {
   private hero: Character | null = null;
   private controller: PlayerController | null = null;
   private crowd: Pedestrians | null = null;
+  private wetKnown = false;
 
   constructor(private readonly ctx: GameContext) {}
 
@@ -55,6 +61,7 @@ export class EntityManager implements IEntityManager, GameSystem {
 
   init(): void {
     const { ctx } = this;
+    characterLighting.envMap = ctx.world.environment ?? null;
     const start = ctx.world.getLocation('player_start');
     const hero = this.spawn({
       id: 'player', name: '陳浩南', role: 'player', faction: 'hungHing', appearance: 'hoNam',
@@ -124,6 +131,7 @@ export class EntityManager implements IEntityManager, GameSystem {
     for (const c of this.list) c.update(time);
     this.crowd?.update(time);
     this.shadowBudget();
+    this.soak(time.realDt);
   }
 
   dispose(): void {
@@ -173,6 +181,19 @@ export class EntityManager implements IEntityManager, GameSystem {
 
   private separable(c: Character): boolean {
     return c.object3d.visible && c.isAlive() && !PINNED.has(c.combatState);
+  }
+
+  /** Clothes and hair follow the weather: quick to soak, slow to dry. */
+  private soak(realDt: number): void {
+    const target = WETNESS[this.ctx.world.weather] ?? 0;
+    const wet = characterLighting.wet;
+    if (!this.wetKnown) {
+      wet.value = target;
+      this.wetKnown = true;
+      return;
+    }
+    const rate = target > wet.value ? SOAK_RATE : DRY_RATE;
+    wet.value += (target - wet.value) * (1 - Math.exp(-rate * realDt));
   }
 
   /** Only the nearest few characters to the camera cast shadows. */

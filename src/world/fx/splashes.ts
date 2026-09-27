@@ -1,7 +1,7 @@
 import { AdditiveBlending, BufferGeometry, Float32BufferAttribute, Points, ShaderMaterial } from 'three';
 import { WATER } from '../data/layout';
 import { mulberry32 } from '../data/rng';
-import type { WorldUniforms } from '../rendering/uniforms';
+import { STREET_LIGHT_GLSL, type WorldUniforms } from '../rendering/uniforms';
 
 const COUNT = 1400;
 
@@ -12,6 +12,8 @@ uniform float uViewHalfHeight;
 attribute float threshold;
 varying float vAge;
 varying float vFade;
+varying vec3 vLit;
+${STREET_LIGHT_GLSL}
 const float TILE = 26.0;
 const float PERIOD = 0.55;
 const float LIFE = 0.3;
@@ -35,12 +37,14 @@ void main() {
   gl_PointSize = on ? size * projectionMatrix[1][1] * uViewHalfHeight / max(-mv.z, 0.1) : 0.0;
   float d = length(xz - cameraPosition.xz);
   vFade = smoothstep(1.0, 3.0, d) * (1.0 - smoothstep(TILE * 0.45, TILE * 0.6, d));
+  vLit = streetLight(vec3(xz.x, 0.1, xz.y));
 }
 `;
 
 const FRAGMENT = /* glsl */ `
 varying float vAge;
 varying float vFade;
+varying vec3 vLit;
 void main() {
   vec2 p = gl_PointCoord * 2.0 - 1.0;
   p.y = -p.y;
@@ -56,7 +60,7 @@ void main() {
   }
   float a = (ring * 0.8 + drops * (1.0 - vAge)) * vFade;
   if (a < 0.01) discard;
-  gl_FragColor = vec4(vec3(0.7, 0.76, 0.86) * a * 0.6, 1.0);
+  gl_FragColor = vec4((vec3(0.7, 0.76, 0.86) * 0.12 + vLit * 0.035) * a, 1.0);
 }
 `;
 
@@ -80,7 +84,7 @@ export function createSplashes(u: WorldUniforms): Points {
   g.setAttribute('position', new Float32BufferAttribute(pos, 3));
   g.setAttribute('threshold', new Float32BufferAttribute(threshold, 1));
   const material = new ShaderMaterial({
-    uniforms: { uTime: u.uTime, uRain: u.uRain, uViewHalfHeight: u.uViewHalfHeight },
+    uniforms: { uTime: u.uTime, uRain: u.uRain, uViewHalfHeight: u.uViewHalfHeight, uLightPos: u.uLightPos, uLightCol: u.uLightCol },
     vertexShader: VERTEX,
     fragmentShader: FRAGMENT,
     blending: AdditiveBlending,

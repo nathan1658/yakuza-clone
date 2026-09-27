@@ -48,6 +48,7 @@ import type {
   Object3D,
   PerspectiveCamera,
   Scene,
+  Texture,
   Vector3,
   WebGLRenderer,
 } from 'three';
@@ -557,6 +558,11 @@ export interface IWorld {
   addTrigger(def: TriggerDef): void;
   removeTrigger(id: string): void;
   setWeather(weather: WeatherKind, transitionSec?: number): void;
+  /**
+   * The night street prefiltered for image-based lighting (characters, props):
+   * set it as a MeshStandardMaterial's envMap. Null until init() builds it.
+   */
+  readonly environment: Texture | null;
   /** Build progress callback while init() runs (0..1). */
   onBuildProgress?: (progress: number, label: string) => void;
 }
